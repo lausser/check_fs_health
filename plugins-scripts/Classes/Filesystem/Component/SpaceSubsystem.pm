@@ -67,8 +67,7 @@ sub init {
     foreach (@df) {
       if (/^Filesystem/) {
         next;
-      } elsif (/^(.*)\s+(\d+)\s+(\d+)\s+([\d\.]+)%\s+(\d+)\s+([\d\.]+)%\s+(.*)/)
- {
+      } elsif (/^(.*)\s+(\d+)\s+(\d+)\s+([\d\.]+)%\s+(\d+)\s+([\d\.]+)%\s+(.*)/) {
         my $fs = {
             'device' => $1,
             'size1k' => $2,
@@ -80,8 +79,7 @@ sub init {
         };
         next if ! $self->filter_name($fs->{name});
         push(@{$self->{filesystems}},
-            Classes::Filesystem::Component::SpaceSubsystem::Filesystem->new(%{$f
-s}));
+            Classes::Filesystem::Component::SpaceSubsystem::Filesystem->new(%{$fs}));
       } else {
       }
     }
