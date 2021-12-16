@@ -1,0 +1,8 @@
+* 2020-05-08 2.0.1
+  detect stale nfs handles
+* 2020-05-08 2.0.0.1
+  fix a bug, continue if --fstype succeeded
+* 2020-05-08 2.0
+  release based on GLPlugin
+* 2009-07-03 1.0
+  initial relase as one single file
