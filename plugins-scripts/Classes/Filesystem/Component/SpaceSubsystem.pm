@@ -15,11 +15,6 @@ sub init {
       $cmd = "df --output=fstype,source,size,avail,pcent,itotal,iused,ipcent,target ".$self->opts->name;
     }
     my @df = `$cmd 2>&1`;
-my @xdf = (
-'Filesystem                  1G-blocks Avail Use%   Inodes    IUsed IUse% Mounted on',
-'gpfs infini02oradatapsu02 157286400 105198144  34% 300000  4125    2% /infini02oradatapsu02',
-'gpfs gpfsdatosbkp   2097152000 773433152  64% 1000000 545515   55% /datosio_backup',
-);
     # Filesystem           1K-blocks     Avail Use% Inodes IUsed IUse% Mounted on
     # infini02oradatapsu02 157286400 105198144  34% 300000  4125    2% /infini02oradatapsu02
     foreach (@df) {
@@ -59,8 +54,39 @@ my @xdf = (
       } else {
       }
     }
+  } elsif ($^O eq "aix") {
+    my $cmd;
+    if (! $self->opts->name) {
+      $cmd = "df -k";
+    } else {
+      $cmd = "df -k ".$self->opts->name;
+    }
+    my @df = `$cmd 2>&1`;
+    # Filesystem    1024-blocks      Free %Used    Iused %Iused Mounted on
+    # /dev/hd4          1376256    394448   72%    11572    12% /
+    foreach (@df) {
+      if (/^Filesystem/) {
+        next;
+      } elsif (/^(.*)\s+(\d+)\s+(\d+)\s+([\d\.]+)%\s+(\d+)\s+([\d\.]+)%\s+(.*)/)
+ {
+        my $fs = {
+            'device' => $1,
+            'size1k' => $2,
+            'avail1k' => $3,
+            'usedpct' => $4,
+            'iused' => $5,
+            'iusedpct' => $6,
+            'name' => $7,
+        };
+        next if ! $self->filter_name($fs->{name});
+        push(@{$self->{filesystems}},
+            Classes::Filesystem::Component::SpaceSubsystem::Filesystem->new(%{$f
+s}));
+      } else {
+      }
+    }
   } else {
-    # aix
+    # 
   }
 }
 

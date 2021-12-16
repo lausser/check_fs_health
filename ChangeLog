@@ -1,3 +1,5 @@
+* 2021-12-16 3.0
+  add support for AIX
 * 2020-05-08 2.0.1
   detect stale nfs handles
 * 2020-05-08 2.0.0.1
