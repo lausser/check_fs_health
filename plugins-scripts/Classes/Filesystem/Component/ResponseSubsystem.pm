@@ -1,7 +1,6 @@
 package Classes::Filesystem::Component::ResponseSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::Item);
 use strict;
-use Time::HiRes;
 use File::stat;
 use threads;
 
@@ -35,6 +34,11 @@ sub check_filesystem_type {
 
 sub init {
   my ($self) = @_;
+  my $interval = 1;
+  eval 'require Time::HiRes';
+  if (! $@) {
+    $interval = 0.01;
+  }
   my $elapsed = 0;
   $self->check_filesystem_type();
   $self->set_thresholds(
@@ -60,11 +64,6 @@ sub init {
         $thread->detach();
         $self->add_critical(sprintf "%s did not respond within %.2fs",
                 $self->{path}, $elapsed);
-        $self->add_perfdata(
-            label => "operation_time_".$self->{path},
-            value => $elapsed,
-            uom => 's',
-        );
         last;
       } else {
       }
@@ -72,10 +71,16 @@ sub init {
       last;
     } else {
     }
-    $elapsed += sleep(1);
+    $elapsed += sleep($interval);
     #if ($elapsed < $self->opts->timeout) {
     #}
   }
+  $self->add_perfdata(
+      label => "operation_time_".$self->{path},
+      value => $elapsed,
+      uom => 's',
+      places => 4,
+  );
 }
 
 
