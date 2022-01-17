@@ -7,22 +7,19 @@ sub init {
   if (! $self->opts->can("units") || !$self->opts->units()) {
     $self->override_opt("units", "MB");
   }
+  my @mounts = ();
   if ($^O eq "linux") {
-    my $cmd;
-    if (! $self->opts->name) {
-      $cmd = "df --output=fstype,source,size,avail,pcent,itotal,iused,ipcent,target";
-    } else {
-      $cmd = "df --output=fstype,source,size,avail,pcent,itotal,iused,ipcent,target ".$self->opts->name;
-    }
+    my $cmd = "df --output=fstype,source,size,avail,pcent,itotal,iused,ipcent,target";
     my @df = `$cmd 2>&1`;
     # Filesystem           1K-blocks     Avail Use% Inodes IUsed IUse% Mounted on
     # infini02oradatapsu02 157286400 105198144  34% 300000  4125    2% /infini02oradatapsu02
     foreach (@df) {
+      my $fs = undef;
       if (/^Filesystem/) {
         next;
       } elsif (/^(.*?)\s+(.*?)\s+(\d+)\s+(\d+)\s+(\d+)%\s+(\d+)\s+(\-*\d+)\s+(\-)\s+(.*)/) {
         # wslfs
-        my $fs = {
+        $fs = {
             'fstype' => $1,
             'device' => $2,
             'size1k' => $3,
@@ -33,11 +30,9 @@ sub init {
             'iusedpct' => 0,
             'name' => $9,
         };
-        next if ! $self->filter_name($fs->{name});
-        push(@{$self->{filesystems}},
-            Classes::Filesystem::Component::SpaceSubsystem::Filesystem->new(%{$fs}));
+        $fs->{has_inodes} = $8 eq "-" ? 0 : 1;
       } elsif (/^(.*?)\s+(.*?)\s+(\d+)\s+(\d+)\s+(\d+)%\s+(\d+)\s+(\d+)\s+(\d+)%\s+(.*)/) {
-        my $fs = {
+        $fs = {
             'fstype' => $1,
             'device' => $2,
             'size1k' => $3,
@@ -48,27 +43,21 @@ sub init {
             'iusedpct' => $8,
             'name' => $9,
         };
-        next if ! $self->filter_name($fs->{name});
-        push(@{$self->{filesystems}},
-            Classes::Filesystem::Component::SpaceSubsystem::Filesystem->new(%{$fs}));
-      } else {
+        $fs->{has_inodes} = 1;
       }
+      push(@mounts, $fs) if $fs;
     }
   } elsif ($^O eq "aix") {
-    my $cmd;
-    if (! $self->opts->name) {
-      $cmd = "df -k";
-    } else {
-      $cmd = "df -k ".$self->opts->name;
-    }
+    my $cmd = "df -k";
     my @df = `$cmd 2>&1`;
     # Filesystem    1024-blocks      Free %Used    Iused %Iused Mounted on
     # /dev/hd4          1376256    394448   72%    11572    12% /
     foreach (@df) {
+      my $fs = undef;
       if (/^Filesystem/) {
         next;
       } elsif (/^(.*)\s+(\d+)\s+(\d+)\s+([\d\.]+)%\s+(\d+)\s+([\d\.]+)%\s+(.*)/) {
-        my $fs = {
+        $fs = {
             'device' => $1,
             'size1k' => $2,
             'avail1k' => $3,
@@ -77,23 +66,43 @@ sub init {
             'iusedpct' => $6,
             'name' => $7,
         };
-        next if ! $self->filter_name($fs->{name});
-        push(@{$self->{filesystems}},
-            Classes::Filesystem::Component::SpaceSubsystem::Filesystem->new(%{$fs}));
-      } else {
+        $fs->{has_inodes} = 1;
       }
+      push(@mounts, $fs) if $fs;
     }
   } else {
-    # 
+  }
+  for my $fs (@mounts) {
+    next if ! $self->filter_name($fs->{name}) and
+        ! $self->filter_name($fs->{device});
+    if ($self->filter_name($fs->{name})) {
+      push(@{$self->{filesystems}},
+          Classes::Filesystem::Component::SpaceSubsystem::Filesystem->new(%{$fs}));
+    } elsif ($self->filter_name($fs->{device})) {
+      push(@{$self->{devices}},
+          Classes::Filesystem::Component::SpaceSubsystem::Filesystem->new(%{$fs}));
+    }
   }
 }
 
 sub check {
   my ($self) = @_;
-  if (! exists $self->{filesystems}) {
+  if (! exists $self->{filesystems} and ! exists $self->{devices}) {
     $self->add_unknown("no filesystems found");
   } else {
-    foreach (@{$self->{filesystems}}) {
+    if (exists $self->{filesystems}) {
+      foreach (@{$self->{filesystems}}) {
+        $_->check();
+      }
+    }
+  }
+  if (exists $self->{devices}) {
+    my $known_devices = {};
+    @{$self->{devices}} = reverse grep {
+      $known_devices->{$_->{device}}++;
+      $known_devices->{$_->{device}} == 1;
+    } reverse @{$self->{devices}};
+    foreach (@{$self->{devices}}) {
       $_->check();
     }
   }
@@ -135,6 +144,7 @@ sub finish {
     $self->{ufree} = $self->{usize} - $self->{uused};
   }
   $self->{ifreepct} = 100 - $self->{iusedpct};
+  $self->{fstype} = exists $self->{fstype} ? $self->{fstype} : "unknown";
 }
 
 sub worst {
@@ -154,12 +164,17 @@ sub check {
     $self->add_info(sprintf "%s %.2f %s",
         $self->{name}, $self->{ufree}, $self->opts->units);
   }
-  $self->annotate_info(sprintf "%.2f%% inode=%d%%",
-      $self->{freepct}, $self->{ifreepct});
-  $self->set_thresholds(metric => $self->{name}."_inodes",
-      warning => "5:",
-      critical => "1:",
-  );
+  if ($self->{has_inodes}) {
+    $self->annotate_info(sprintf "%.2f%% inode=%d%%",
+        $self->{freepct}, $self->{ifreepct});
+    $self->set_thresholds(metric => $self->{name}."_inodes",
+        warning => "5:",
+        critical => "1:",
+    );
+  } else {
+    $self->annotate_info(sprintf "%.2f%% inode=-",
+        $self->{freepct});
+  }
   my $inode_level = $self->check_thresholds(
       metric => $self->{name}."_inodes",
       value => $self->{ifreepct},
