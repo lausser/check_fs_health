@@ -179,15 +179,6 @@ sub check {
       metric => $self->{name}."_inodes",
       value => $self->{ifreepct},
   );
-  my $space_level = $self->opts->units eq "%" ?
-      $self->check_thresholds(
-          metric => $self->{name},
-          value => $self->{freepct},
-      ) :
-      $self->check_thresholds(
-          metric => $self->{name},
-          value => $self->{ufree},
-      );
   if ($self->opts->units eq "%") {
     $self->set_thresholds(metric => $self->{name},
         warning => "10:",
@@ -199,6 +190,15 @@ sub check {
         critical => ($self->{usize} / 20).":",
     );
   }
+  my $space_level = $self->opts->units eq "%" ?
+      $self->check_thresholds(
+          metric => $self->{name},
+          value => $self->{freepct},
+      ) :
+      $self->check_thresholds(
+          metric => $self->{name},
+          value => $self->{ufree},
+      );
   if ($inode_level) {
     $self->annotate_info("inodes low, fstype ".$self->{fstype});
   }
